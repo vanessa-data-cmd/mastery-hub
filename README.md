@@ -22,4 +22,4 @@ Elle leur permet de réviser seuls, en toute confiance, en valorisant leurs poin
 - Compte utilisateur pour conserver sa progression multi-supports.
 
 ---
-👉 [Tester l'application en direct](https://vanna-data-cmd.github.io/mastery-hub/)
+👉 [Tester l'application en direct](https://vanessa-data-cmd.github.io/mastery-hub/)
