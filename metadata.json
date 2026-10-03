@@ -1,0 +1,6 @@
+{
+  "name": "CapDys - Mastery Hub 6ème",
+  "description": "Application pédagogique pour enfant dysorthographique de 11 ans en 6ème : scanner photo de cours par l'IA, quiz gamifié Battle Royale, validation globale et boîte à outils de méthodologie.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
