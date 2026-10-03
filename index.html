@@ -3,426 +3,1333 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CapDys - Mathieu 6ème</title>
+  <title>CapDys - Mathieu 6ème • Hub de Révision Autonome</title>
+  
+  <!-- Tailwind CSS & React 18 -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;600;800&family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet" />
+  
+  <!-- Polices DYS & Design -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Bungee&display=swap" rel="stylesheet" />
+
   <style>
-    body { font-family: "Plus Jakarta Sans", sans-serif; }
-    .dys-mode { font-family: "Lexend", sans-serif; letter-spacing: 0.05em; line-height: 1.8; word-spacing: 0.15em; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-    .anim-fade { animation: fadeIn 0.25s ease-out forwards; }
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    .font-dys { font-family: 'Lexend', sans-serif; letter-spacing: 0.05em; line-height: 1.8; word-spacing: 0.12em; }
+    .font-gaming { font-family: 'Bungee', cursive; }
+    .reading-highlight { background-color: rgba(254, 240, 138, 0.45); border-left: 4px solid #eab308; }
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 15px rgba(234, 179, 8, 0.4); }
+      50% { box-shadow: 0 0 25px rgba(234, 179, 8, 0.8); }
+    }
+    .pulse-glow { animation: pulseGlow 2s infinite; }
   </style>
 </head>
-<body class="bg-amber-50/40 text-slate-800 antialiased selection:bg-amber-300">
+<body class="bg-slate-50 text-slate-900 transition-colors duration-200 antialiased selection:bg-amber-300">
   <div id="root"></div>
-  <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
 
-    const SUBJECTS = [
-      { id: "svt", name: "SVT", icon: "🌱", color: "from-emerald-500 to-teal-600" },
-      { id: "histoire", name: "Histoire", icon: "🏛️", color: "from-amber-600 to-yellow-600" },
-      { id: "geo", name: "Géographie", icon: "🌍", color: "from-sky-500 to-blue-600" },
-      { id: "pc", name: "Physique-Chimie", icon: "⚡", color: "from-indigo-500 to-violet-600" },
-      { id: "anglais", name: "Anglais", icon: "🇬🇧", color: "from-red-500 to-rose-600" },
-      { id: "maths", name: "Maths", icon: "📐", color: "from-cyan-500 to-blue-600" },
-      { id: "francais", name: "Français", icon: "📚", color: "from-fuchsia-500 to-pink-600" }
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useMemo } = React;
+
+    // === SYNTHÈSE VOCALE & EFFETS AUDIO ===
+    const speakText = (text, rate = 0.95) => {
+      if (!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'fr-FR';
+      utterance.rate = rate;
+      window.speechSynthesis.speak(utterance);
+    };
+
+    const playSoundEffect = (type) => {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        if (type === 'success') {
+          osc.frequency.setValueAtTime(440, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.3);
+          gain.gain.setValueAtTime(0.2, ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.3);
+        } else if (type === 'victory') {
+          if (window.confetti) window.confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+        }
+      } catch (e) {}
+    };
+
+    // === CONFIGURATION DES MATIÈRES & ONGLETS ===
+    const SUBJECT_TABS = [
+      { id: 'svt', label: 'SVT', icon: '🌱', color: 'from-emerald-500 to-teal-600', border: 'border-emerald-500' },
+      { id: 'histoire', label: 'Histoire', icon: '🏛️', color: 'from-amber-500 to-orange-600', border: 'border-amber-500' },
+      { id: 'maths', label: 'Maths', icon: '📐', color: 'from-blue-500 to-indigo-600', border: 'border-blue-500' },
+      { id: 'anglais', label: 'Anglais', icon: '🇬🇧', color: 'from-rose-500 to-red-600', border: 'border-rose-500' },
+      { id: 'pc', label: 'Physique-Chimie', icon: '⚡', color: 'from-yellow-500 to-amber-600', border: 'border-yellow-500' },
+      { id: 'geo', label: 'Géographie', icon: '🌍', color: 'from-teal-500 to-cyan-600', border: 'border-teal-500' },
+      { id: 'francais', label: 'Français', icon: '📚', color: 'from-purple-500 to-pink-600', border: 'border-purple-500' }
     ];
 
-    const LESSONS = {
+    // === COURS_DATA : PARTIE 1 (SVT, HISTOIRE, MATHS) ===
+    const COURS_DATA = {
       svt: {
-        title: "SVT • Les Écosystèmes et le Vivant",
-        videoScript: "Un écosystème réunit 3 éléments complémentaires : 1, le milieu non vivant (le biotope). 2, les êtres vivants (la biocénose). 3, toutes les interactions entre eux.",
-        flash: "Biotope (décor non vivant) + Biocénose (êtres vivants) = Écosystème !",
-        quiz: [
-          { q: "Quels sont les 3 piliers essentiels d'un écosystème ?", options: ["1. Biotope, 2. Biocénose, 3. Interactions", "1. Eau, 2. Feu, 3. Terre", "1. Plantes, 2. Animaux, 3. Humains"], rep: 0 },
-          { q: "Le biotope représente la partie vivante ou non vivante ?", options: ["Non vivante (eau, roches, climat)", "Vivante (animaux et plantes)"], rep: 0 }
+        id: 'svt_ecosystemes',
+        title: 'Leçon A1 - Les écosystèmes et le vivant',
+        subject: 'svt',
+        summaryKids: "Un écosystème réunit un milieu naturel, des êtres vivants et toutes les interactions qu'ils fabriquent ensemble. Ce n'est pas seulement la forêt : une mare ou un désert sont aussi des écosystèmes !",
+        audioFlashScript: "Bienvenue dans ton flash SVT de 2 minutes ! Aujourd'hui, on explore l'écosystème. Retiens bien les 3 piliers : Milieu + Êtres vivants + Interactions !",
+        survivalSheet: {
+          dangerRed: "Pense bien à élargir : un écosystème n'est pas uniquement la forêt. Une mare ou un désert sont aussi des écosystèmes complets.",
+          warningYellow: ["Milieu de vie (le décor)", "Êtres vivants (les habitants)", "Interactions (les liens)"],
+          greenFoundation: "Écosystème = Décor naturel + Vivants + Liens entre eux !"
+        },
+        practicalMission: {
+          role: "Garde Forestier d'élite",
+          scenario: "Une mare vient d'apparaître dans la réserve. Les grenouilles mangent les moustiques et les nénuphars filtrent l'eau.",
+          task: "Explique ce qui risque d'arriver à cet écosystème si des produits chimiques sont déversés dans l'eau."
+        },
+        everydayApplications: [
+          "Comprendre pourquoi un aquarium à la maison a besoin de plantes et de filtres pour que les poissons restent en vie.",
+          "Savoir pourquoi il faut protéger les abeilles dans le jardin car elles permettent à nos fruits de pousser."
+        ],
+        mnemonicTrick: "Pense au trio M.E.I. : Milieu + Êtres vivants + Interactions !",
+        quizQuestions: [
+          {
+            id: "svt_exam_def_ecosysteme",
+            type: "briques",
+            subject: "svt",
+            level: 3,
+            titre: "Contrôle A1 • Donne la définition complète d'un écosystème (4 points)",
+            points: 4,
+            isOfficialExam: true,
+            consigneRadar: {
+              trapWarning: "⚠️ Écrire seulement 'des êtres vivants' sans le milieu fait perdre 2,5 points !",
+              radarQuestion: "Que cherche le professeur pour attribuer la totalité des 4 points ?",
+              options: [
+                {
+                  text: "Le trio complet : Les êtres vivants + Leur milieu de vie + Leurs interactions mutuelles",
+                  isCorrect: true,
+                  explanation: "Bravo ! Les 3 composantes doivent figurer dans ta phrase pour avoir 4/4 !"
+                },
+                {
+                  text: "Seulement citer des animaux de la forêt comme le cerf et le renard",
+                  isCorrect: false,
+                  explanation: "Attention ! Citer des animaux ne donne que 1 point sur 4, il manque le milieu et les interactions."
+                }
+              ]
+            },
+            bricksBank: [
+              "Un écosystème est un ensemble formé par",
+              "les êtres vivants (animaux, végétaux, décomposeurs),",
+              "leur milieu de vie (biotope),",
+              "et les interactions des êtres vivants entre eux et avec leur milieu.",
+              "le désert aride",
+              "les routes goudronnées"
+            ],
+            correctBricks: [
+              "Un écosystème est un ensemble formé par",
+              "les êtres vivants (animaux, végétaux, décomposeurs),",
+              "leur milieu de vie (biotope),",
+              "et les interactions des êtres vivants entre eux et avec leur milieu."
+            ],
+            criteriaChecklist: [
+              { label: "1. Êtres vivants cités (+1 pt)", keywords: ["vivants", "animaux", "végétaux"] },
+              { label: "2. Milieu de vie cité (Biotope) (+1.5 pt)", keywords: ["milieu de vie", "milieu", "biotope"] },
+              { label: "3. Interactions mutuelles citées (+1.5 pt)", keywords: ["interactions", "relations"] }
+            ],
+            explanation: "Un écosystème est l'ensemble formé par les êtres vivants, leur milieu de vie, ainsi que les interactions des êtres vivants entre eux et avec leur milieu.",
+            hint: "Pense au trio : 1. Êtres vivants + 2. Milieu de vie + 3. Interactions !"
+          },
+          {
+            id: "svt_exam_saisons_changent",
+            type: "briques",
+            subject: "svt",
+            level: 3,
+            titre: "Contrôle A2 • Est-ce que les écosystèmes changent ? Donne un exemple précis (3 points)",
+            points: 3,
+            isOfficialExam: true,
+            consigneRadar: {
+              trapWarning: "⚠️ 'changent' = dans le temps (saisons), PAS un autre pays !",
+              radarQuestion: "Quand le professeur demande si les écosystèmes 'changent', que veut-il évaluer ?",
+              options: [
+                {
+                  text: "Montrer les transformations temporelles au fil des saisons (feuilles qui tombent, animaux qui hibernent)",
+                  isCorrect: true,
+                  explanation: "Parfait ! Un écosystème évolue selon les saisons, le climat ou les actions humaines."
+                },
+                {
+                  text: "Dire qu'il y a des déserts en Afrique et des forêts en France",
+                  isCorrect: false,
+                  explanation: "Non, cela décrit deux lieux différents, pas un changement au cours du temps !"
+                }
+              ]
+            },
+            bricksBank: [
+              "Oui, les écosystèmes changent au fil des saisons :",
+              "en hiver par exemple, les arbres perdent leurs feuilles,",
+              "certains animaux hibernent comme la marmotte,",
+              "et d'autres migrent vers le sud comme les oiseaux.",
+              "ils ne changent jamais",
+              "la météo reste toujours la même"
+            ],
+            correctBricks: [
+              "Oui, les écosystèmes changent au fil des saisons :",
+              "en hiver par exemple, les arbres perdent leurs feuilles,",
+              "certains animaux hibernent comme la marmotte,",
+              "et d'autres migrent vers le sud comme les oiseaux."
+            ],
+            criteriaChecklist: [
+              { label: "1. Réponse affirmative (Oui ils changent) (+1 pt)", keywords: ["oui", "changent", "évoluent"] },
+              { label: "2. Exemple végétal (perte des feuilles en hiver) (+1 pt)", keywords: ["arbres", "feuilles", "végétaux"] },
+              { label: "3. Exemple animal (hibernation ou migration) (+1 pt)", keywords: ["hibernent", "migrent", "animaux"] }
+            ],
+            explanation: "Les écosystèmes ne sont pas figés : ils se transforment avec les saisons (bourgeonnement au printemps, perte des feuilles en automne, sommeil hivernal).",
+            hint: "Pense au passage de l'été à l'hiver dans la forêt."
+          },
+          {
+            id: "svt_1",
+            type: "libre",
+            subject: "svt",
+            level: 1,
+            titre: "Qu'est-ce qu'un écosystème ?",
+            points: 4,
+            explanation: "Un écosystème est l'ensemble formé par les êtres vivants, leur milieu de vie, ainsi que les interactions des êtres vivants entre eux et avec leur milieu.",
+            hint: "Pense aux 3 mots magiques : Êtres vivants, Milieu de vie, et Interactions."
+          },
+          {
+            id: "svt_2",
+            type: "qcm",
+            subject: "svt",
+            level: 1,
+            titre: "Quelles sont les 3 composantes inséparables d'un écosystème ?",
+            points: 2,
+            options: [
+              "Les êtres vivants, le milieu de vie, et leurs interactions",
+              "Le soleil, la pluie, et les nuages",
+              "Les arbres, les feuilles, et les branches",
+              "La terre, le sable, et le béton"
+            ],
+            correctIndex: 0,
+            explanation: "Un écosystème réunit toujours le milieu (biotope), les êtres vivants (biocénose) et leurs liens mutuels !",
+            hint: "Rappelle-toi du schéma avec les flèches d'interactions."
+          },
+          {
+            id: "svt_3",
+            type: "vf",
+            subject: "svt",
+            level: 1,
+            titre: "Vrai ou Faux : Les êtres vivants n'ont aucune influence sur leur milieu de vie.",
+            points: 2,
+            correctAnswer: "Faux",
+            explanation: "C'est FAUX ! Les êtres vivants modifient constamment leur milieu (ex: le castor construit des barrages, les vers de terre aèrent le sol).",
+            hint: "Pense aux barrages de castors ou aux galeries creusées par les lombrics."
+          },
+          {
+            id: "svt_4",
+            type: "trou",
+            subject: "svt",
+            level: 2,
+            titre: "Texte à trous : Dans un écosystème, les relations entre les êtres vivants s'appellent des ________.",
+            points: 2,
+            correctAnswer: "interactions",
+            explanation: "Ce sont les interactions (nutrition, prédation, entraide, parasitisme).",
+            hint: "Ce mot commence par inter- et rime avec récréation."
+          },
+          {
+            id: "svt_5",
+            type: "libre",
+            subject: "svt",
+            level: 2,
+            titre: "Donne un exemple précis d'interaction entre deux êtres vivants dans la forêt.",
+            points: 4,
+            explanation: "L'écureuil mange les glands du chêne (nutrition) ou l'abeille butine la fleur et transporte le pollen (pollinisation).",
+            hint: "Pense à qui mange qui, ou qui aide qui à se reproduire."
+          }
         ]
       },
+
       histoire: {
-        title: "Histoire • Les Premiers Hommes & Préhistoire",
-        videoScript: "Vers -3500 avant J.-C., l'invention de l'écriture en Mésopotamie marque la fin de la Préhistoire et le début de l'Histoire.",
-        flash: "Retiens bien la date clé : vers -3500, la naissance de l'écriture ouvre l'Histoire !",
-        quiz: [
-          { q: "En quelle année l'écriture est-elle inventée en Mésopotamie ?", options: ["Vers -3500", "Vers 1500", "En l'an 0"], rep: 0 },
-          { q: "Où sont nés les premiers êtres humains (berceau de l'humanité) ?", options: ["En Afrique", "En Europe", "En Asie"], rep: 0 }
+        id: 'hist_prehistoire',
+        title: "6H1 - Les débuts de l'humanité & Paléolithique",
+        subject: 'histoire',
+        summaryKids: "Les premiers humains sont nés en Afrique (le berceau de l'humanité). Au Paléolithique, ils étaient nomades : ils suivaient les bêtes, taillaient le silex et n'avaient aucun village fixe !",
+        audioFlashScript: "Voici ton flash Histoire de 2 minutes ! Remontons le temps jusqu'à la Préhistoire. Retiens bien : fossile, nomade et migration !",
+        survivalSheet: {
+          dangerRed: "Au Paléolithique, les humains sont nomades (aucun village fixe). Les villages et l'agriculture n'arrivent qu'au Néolithique.",
+          warningYellow: ["Fossile (trace dans la roche)", "Nomade (sans habitat fixe)", "Migration (déplacement)", "Afrique (berceau)"],
+          greenFoundation: "Préhistoire = De l'homme jusqu'à l'écriture (-3500 av. J.-C.)",
+          keyDates: [
+            { date: "Vers -7 millions d'années", event: "Toumaï en Afrique (plus ancien ancêtre connu)" },
+            { date: "Vers -300 000 ans", event: "Apparition d'Homo Sapiens en Afrique" },
+            { date: "Vers -100 000 ans", event: "Grandes migrations hors d'Afrique" },
+            { date: "Vers -40 000 ans", event: "Art pariétal des grottes (Chauvet, Lascaux)" },
+            { date: "Vers -10 000 av. J.-C.", event: "Révolution néolithique (agriculture, villages)" },
+            { date: "Vers -3500 av. J.-C.", event: "Invention de l'écriture en Mésopotamie (fin Préhistoire)" }
+          ]
+        },
+        practicalMission: {
+          role: "Archéologue de terrain en expédition",
+          scenario: "Tu viens de déterrer des outils en silex taillé et des os anciens dans une grotte.",
+          task: "Explique aux journalistes pourquoi ces traces prouvent qu'un groupe d'Homo Sapiens nomades a vécu ici."
+        },
+        everydayApplications: [
+          "Comprendre comment les archéologues reconstituent l'histoire lors de fouilles.",
+          "Savoir d'où vient l'humanité et pourquoi nous partageons la même origine africaine."
+        ],
+        mnemonicTrick: "Paléo = Pierre taillée (P comme Pierre et Paléo) !",
+        quizQuestions: [
+          {
+            id: "hist_exam_compare_paleo_neo",
+            chapterId: "hist_ch1",
+            type: "briques",
+            subject: "histoire",
+            level: 3,
+            titre: "Contrôle • Compare le mode de vie des humains au Paléolithique et au Néolithique (4 points)",
+            points: 4,
+            isOfficialExam: true,
+            consigneRadar: {
+              trapWarning: "⚠️ Bien opposer nomade / sédentaire ET chasseur / agriculteur !",
+              radarQuestion: "Quels sont les deux grands changements majeurs qui séparent ces deux époques ?",
+              options: [
+                {
+                  text: "L'habitat (nomades vs sédentaires) ET la nourriture (chasse/cueillette vs agriculture/élevage)",
+                  isCorrect: true,
+                  explanation: "Bravo ! Ce sont les deux transformations majeures de la vie humaine !"
+                },
+                {
+                  text: "L'invention de l'électricité et des ordinateurs",
+                  isCorrect: false,
+                  explanation: "Hors-sujet, cela se passe à la Préhistoire il y a des milliers d'années !"
+                }
+              ]
+            },
+            bricksBank: [
+              "Au Paléolithique, les humains étaient des nomades chasseurs-cueilleurs,",
+              "alors qu'au Néolithique, ils deviennent sédentaires,",
+              "vivent dans les premiers villages",
+              "et pratiquent l'agriculture et l'élevage.",
+              "ils habitaient dans des châteaux",
+              "ils voyageaient en avion"
+            ],
+            correctBricks: [
+              "Au Paléolithique, les humains étaient des nomades chasseurs-cueilleurs,",
+              "alors qu'au Néolithique, ils deviennent sédentaires,",
+              "vivent dans les premiers villages",
+              "et pratiquent l'agriculture et l'élevage."
+            ],
+            criteriaChecklist: [
+              { label: "1. Mode Paléolithique (Nomades, chasseurs) (+1.5 pt)", keywords: ["paléolithique", "nomades", "chasseurs"] },
+              { label: "2. Mot de comparaison (alors que) (+1 pt)", keywords: ["alors que", "contraire"] },
+              { label: "3. Mode Néolithique (Sédentaires, agriculture) (+1.5 pt)", keywords: ["néolithique", "sédentaires", "agriculture"] }
+            ],
+            explanation: "Au Paléolithique, les hommes sont nomades (chasse) ; au Néolithique, ils se sédentarisent dans des villages grâce à l'agriculture et l'élevage.",
+            hint: "Paléolithique (Nomades) ➡️ Néolithique (Sédentaires & Agriculteurs)."
+          },
+          {
+            id: "hist_exam_feu_revolution",
+            chapterId: "hist_ch3",
+            type: "briques",
+            subject: "histoire",
+            level: 3,
+            titre: "Contrôle • Explique pourquoi la maîtrise du feu (vers -400 000 ans) a été une révolution (3 points)",
+            points: 3,
+            isOfficialExam: true,
+            consigneRadar: {
+              trapWarning: "⚠️ 3 fonctions vitales attendues : chaleur, protection contre les fauves, et cuisson !",
+              radarQuestion: "Quels sont les rôles indispensables attendus dans ton explication ?",
+              options: [
+                {
+                  text: "Se chauffer contre le froid glacial, éloigner les animaux féroces la nuit et cuire les aliments pour digérer",
+                  isCorrect: true,
+                  explanation: "Bravo ! Ces 3 éléments expliquent la survie humaine."
+                },
+                {
+                  text: "Pouvoir allumer des lampes électriques",
+                  isCorrect: false,
+                  explanation: "Attention aux anachronismes géants !"
+                }
+              ]
+            },
+            bricksBank: [
+              "La maîtrise du feu vers -400 000 ans a transformé la vie humaine :",
+              "il a permis de se réchauffer face aux climats froids,",
+              "d'éloigner les prédateurs dangereux pendant la nuit,",
+              "et de cuire la viande pour mieux la digérer et éviter les parasites."
+            ],
+            correctBricks: [
+              "La maîtrise du feu vers -400 000 ans a transformé la vie humaine :",
+              "il a permis de se réchauffer face aux climats froids,",
+              "d'éloigner les prédateurs dangereux pendant la nuit,",
+              "et de cuire la viande pour mieux la digérer et éviter les parasites."
+            ],
+            criteriaChecklist: [
+              { label: "1. Chaleur citée (+1 pt)", keywords: ["chauffer", "froid", "chaleur"] },
+              { label: "2. Protection contre les prédateurs (+1 pt)", keywords: ["prédateurs", "animaux", "fauves"] },
+              { label: "3. Cuisson des aliments (+1 pt)", keywords: ["cuire", "cuisson", "viande"] }
+            ],
+            explanation: "Le feu a apporté la chaleur, la lumière, la protection nocturne et la cuisson des aliments.",
+            hint: "Trio vital : Chaleur + Protection + Cuisson des viandes."
+          },
+          {
+            id: "hist_exam_art_parietal_deduction",
+            chapterId: "hist_ch3",
+            type: "briques",
+            subject: "histoire",
+            level: 3,
+            titre: "Contrôle • Pourquoi l'Homo Sapiens peignait-il au fond des grottes sombres et non à l'entrée ? (3 points)",
+            points: 3,
+            isOfficialExam: true,
+            bricksBank: [
+              "Homo Sapiens peignait au fond des grottes sombres car ces lieux obscurs",
+              "servaient de sanctuaires sacrés pour accomplir des rituels magiques,",
+              "afin d'honorer les animaux et de s'attirer la chance pour la chasse.",
+              "Les premiers hommes ne vivaient pas au fond mais à l'entrée sous abri."
+            ],
+            correctBricks: [
+              "Homo Sapiens peignait au fond des grottes sombres car ces lieux obscurs",
+              "servaient de sanctuaires sacrés pour accomplir des rituels magiques,",
+              "afin d'honorer les animaux et de s'attirer la chance pour la chasse.",
+              "Les premiers hommes ne vivaient pas au fond mais à l'entrée sous abri."
+            ],
+            explanation: "L'art pariétal au fond des grottes servait de sanctuaires rituels pour s'attirer la bienveillance des esprits animaux avant la chasse."
+          },
+          {
+            id: "hist_1",
+            chapterId: "hist_ch1",
+            type: "libre",
+            subject: "histoire",
+            level: 1,
+            titre: "Définis précisément ce qu'est un 'fossile' en rédigeant une phrase complète.",
+            points: 4,
+            explanation: "Un fossile est une trace ou un reste d'être vivant conservé dans la roche ou la terre depuis des milliers d'années.",
+            hint: "Pense à une trace piégée dans la roche."
+          },
+          {
+            id: "hist_3",
+            chapterId: "hist_ch1",
+            type: "qcm",
+            subject: "histoire",
+            level: 2,
+            titre: "De quel continent tous les premiers humains (Homo Sapiens) sont-ils originaires ?",
+            points: 2,
+            options: ["L'Afrique (le berceau de l'humanité)", "L'Europe", "L'Asie", "L'Amérique"],
+            correctIndex: 0,
+            explanation: "L'Afrique est le berceau de l'humanité, d'où sont parties toutes les grandes migrations."
+          },
+          {
+            id: "hist_4",
+            chapterId: "hist_ch3",
+            type: "vf",
+            subject: "histoire",
+            level: 2,
+            titre: "Vrai ou Faux : Au Paléolithique, les humains construisaient de grands villages fortifiés avec des remparts.",
+            points: 2,
+            correctAnswer: "Faux",
+            explanation: "C'est FAUX ! Au Paléolithique, ils sont nomades et vivent sous des tentes en peau ou à l'entrée des grottes."
+          },
+          {
+            id: "hist_7",
+            chapterId: "hist_ch1",
+            type: "qcm",
+            subject: "histoire",
+            level: 2,
+            titre: "Vers quelle date et avec quel événement historique la Préhistoire prend-elle fin ?",
+            points: 2,
+            options: [
+              "Vers -3500 avant J.-C. avec l'invention de l'écriture",
+              "Vers l'an 0 avec notre calendrier moderne",
+              "En 1789 avec la Révolution française"
+            ],
+            correctIndex: 0,
+            explanation: "L'apparition de l'écriture vers -3500 av. J.-C. marque le passage de la Préhistoire à l'Histoire."
+          },
+          {
+            id: "hist_8",
+            chapterId: "hist_ch3",
+            type: "vf",
+            subject: "histoire",
+            level: 2,
+            titre: "Vrai ou Faux : Les célèbres peintures préhistoriques des grottes de Chauvet et Lascaux datent du Paléolithique.",
+            points: 2,
+            correctAnswer: "Vrai",
+            explanation: "C'est VRAI ! L'art pariétal a été créé par les chasseurs-cueilleurs nomades du Paléolithique."
+          },
+          {
+            id: "hist_exam_autonomie_nomade",
+            chapterId: "hist_ch1",
+            type: "libre",
+            subject: "histoire",
+            level: 3,
+            titre: "🔥 Défi Autonomie • Compare en une phrase le mode de vie des nomades du Paléolithique et des sédentaires du Néolithique (4 points)",
+            points: 4,
+            isOfficialExam: true,
+            isAutonomyChallenge: true,
+            explanation: "Au Paléolithique, les humains étaient des nomades chasseurs-cueilleurs, alors qu'au Néolithique, ils sont devenus des sédentaires vivant dans des villages d'agriculteurs-éleveurs."
+          }
         ]
       },
-      geo: {
-        title: "Géographie • Les Continents et les Océans",
-        videoScript: "La Terre compte 6 grands continents et 5 grands océans. L'océan Pacifique est le plus vaste de tous !",
-        flash: "6 continents (Afrique, Amérique, Asie, Europe, Océanie, Antarctique) et 5 océans !",
-        quiz: [
-          { q: "Combien y a-t-il de continents et d'océans ?", options: ["6 continents et 5 océans", "4 continents et 4 océans", "7 continents et 3 océans"], rep: 0 },
-          { q: "Quel est le plus grand océan de notre planète ?", options: ["L'océan Pacifique", "L'océan Atlantique", "L'océan Indien"], rep: 0 }
-        ]
-      },
-      pc: {
-        title: "Physique-Chimie • Les Déchets & les 3 Bacs de Tri",
-        videoScript: "En physique-chimie, voici les 3 bacs de tri indispensables : 1, la poubelle jaune pour les emballages en plastique, métaux et cartons. 2, le conteneur vert pour le verre. 3, le bac à compost pour les déchets organiques.",
-        flash: "3 bacs : 1. Jaune (emballages et métaux), 2. Vert (verre), 3. Marron (compost) !",
-        quiz: [
-          { q: "Dans quelle poubelle jette-t-on une canette de soda en aluminium recyclable ?", options: ["Le bac jaune (emballages et métaux)", "Le bac vert (verre)", "La poubelle ordinaire"], rep: 0 },
-          { q: "Un matériau qui laisse circuler la chaleur s'appelle :", options: ["Un conducteur thermique (comme les métaux)", "Un isolant thermique (comme le bois)"], rep: 0 }
-        ]
-      },
-      anglais: {
-        title: "Anglais • Nombres, Dates et Prépositions",
-        videoScript: "Pour compter en anglais : 1, trait d'union entre 21 et 99. 2, quarante s'écrit forty sans U. 3, cent, mille et million sont invariables au pluriel.",
-        flash: "ON pour un jour précis (on Monday). IN pour un mois ou une année (in July, in 2026).",
-        quiz: [
-          { q: "Quelle préposition utilise-t-on devant un jour précis ?", options: ["ON (ex: on Friday)", "IN (ex: in Friday)", "AT (ex: at Friday)"], rep: 0 },
-          { q: "Comment s'écrit correctement le chiffre quarante en anglais ?", options: ["forty (sans U)", "fourty (avec un U)", "fourteen"], rep: 0 }
-        ]
-      },
+
       maths: {
-        title: "Mathématiques • Les Fractions et le Partage",
-        videoScript: "Une fraction représente un partage équitable : le numérateur en haut indique le nombre de parts prises, le dénominateur en bas indique le total de parts.",
-        flash: "Numérateur (haut = parts prises) sur Dénominateur (bas = parts totales découpées) !",
-        quiz: [
-          { q: "Si on coupe une pizza en 4 parts égales et qu'on en mange 3, quelle est la fraction ?", options: ["3/4", "4/3", "1/4"], rep: 0 },
-          { q: "Quel nombre se trouve en bas d'une fraction ?", options: ["Le dénominateur", "Le numérateur"], rep: 0 }
+        id: 'maths_fractions',
+        title: 'Fractions, Décimaux & Tables de multiplication',
+        subject: 'maths',
+        summaryKids: "Une fraction est un partage : le dénominateur (en bas) indique le nombre de parts égales découpées, et le numérateur (en haut) indique le nombre de parts prises.",
+        audioFlashScript: "Salut Mathieu ! Voici ton flash Maths. 14 dixièmes, c'est 1,4. 7 centièmes, c'est 0,07. Pour les tables : 7 x 8 = 56 et 8 x 9 = 72 !",
+        survivalSheet: {
+          dangerRed: "Attention à la virgule : 7 dixièmes = 0,7 (1 chiffre après la virgule), alors que 7 centièmes = 0,07 (2 chiffres après la virgule).",
+          warningYellow: ["Numérateur (en haut)", "Dénominateur (en bas)", "7 x 8 = 56", "8 x 9 = 72"],
+          greenFoundation: "Dénominateur = Découpe du gâteau / Numérateur = Nombre de parts prises"
+        },
+        practicalMission: {
+          role: "Architecte en chef des bases",
+          scenario: "Tu dois partager une cargaison de bouclier de 100 unités entre 4 escouades de façon strictement égale.",
+          task: "Écris la fraction correspondante et calcule le nombre de potions par escouade (100 / 4 = 25)."
+        },
+        everydayApplications: [
+          "Partager une pizza ou un gâteau d'anniversaire à parts parfaitement égales.",
+          "Calculer les réductions pendant les soldes (-50 % c'est la moitié)."
+        ],
+        mnemonicTrick: "Le Dénominateur est en bas, comme la Terre (D comme Descendre ou Dessous) !",
+        quizQuestions: [
+          {
+            id: "maths_exam_compare_fractions",
+            type: "briques",
+            subject: "maths",
+            level: 3,
+            titre: "Contrôle • Compare les fractions 7/10 et 4/10 en justifiant ton résultat avec rigueur (3 points)",
+            points: 3,
+            isOfficialExam: true,
+            consigneRadar: {
+              trapWarning: "⚠️ En maths, écrire juste '>' ne suffit pas : le prof attend la règle du cours 'même dénominateur' !",
+              radarQuestion: "Comment justifie-t-on qu'une fraction est plus grande qu'une autre ?",
+              options: [
+                {
+                  text: "Affirmer que 7/10 > 4/10 car elles ont le même dénominateur (10) et 7 est plus grand que 4",
+                  isCorrect: true,
+                  explanation: "Parfait ! Quand les dénominateurs sont égaux, la plus grande fraction a le plus grand numérateur."
+                },
+                {
+                  text: "Additionner 7 et 10 ensemble",
+                  isCorrect: false,
+                  explanation: "Non, additionner ne justifie pas une comparaison !"
+                }
+              ]
+            },
+            bricksBank: [
+              "7/10 est PLUS grand que 4/10 (7/10 > 4/10),",
+              "car les deux fractions ont le même dénominateur (10),",
+              "et le numérateur 7 est supérieur au numérateur 4."
+            ],
+            correctBricks: [
+              "7/10 est PLUS grand que 4/10 (7/10 > 4/10),",
+              "car les deux fractions ont le même dénominateur (10),",
+              "et le numérateur 7 est supérieur au numérateur 4."
+            ],
+            criteriaChecklist: [
+              { label: "1. Comparaison affirmée (7/10 > 4/10) (+1 pt)", keywords: ["plus grand", ">"] },
+              { label: "2. Même dénominateur justifié (10) (+1 pt)", keywords: ["dénominateur", "10"] },
+              { label: "3. Numérateurs comparés (7 > 4) (+1 pt)", keywords: ["numérateur", "7", "4"] }
+            ],
+            explanation: "Quand deux fractions ont le même dénominateur, la plus grande est celle qui a le plus grand numérateur.",
+            hint: "Dénominateur identique ➡️ Compare simplement les nombres du haut !"
+          },
+          {
+            id: "maths_exam_14_dixiemes",
+            type: "briques",
+            subject: "maths",
+            level: 3,
+            titre: "Contrôle • Écris 14 dixièmes sous forme de fraction puis sous forme de nombre décimal à virgule (3 points)",
+            points: 3,
+            isOfficialExam: true,
+            bricksBank: [
+              "14 dixièmes s'écrit sous forme de fraction 14/10,",
+              "ce qui correspond à 14 divisé par 10,",
+              "et donne le nombre décimal 1,4."
+            ],
+            correctBricks: [
+              "14 dixièmes s'écrit sous forme de fraction 14/10,",
+              "ce qui correspond à 14 divisé par 10,",
+              "et donne le nombre décimal 1,4."
+            ],
+            explanation: "14 dixièmes = 14/10 = 1,4 (un chiffre après la virgule car on divise par 10)."
+          },
+          {
+            id: "maths_table_7x8",
+            type: "qcm",
+            subject: "maths",
+            level: 1,
+            titre: "Combien font 7 x 8 ?",
+            points: 2,
+            options: ["56", "54", "48", "64"],
+            correctIndex: 0,
+            explanation: "7 x 8 = 56 ! Retiens la suite magique : 5, 6, 7, 8 donc 56 = 7 x 8 !"
+          },
+          {
+            id: "maths_table_8x9",
+            type: "qcm",
+            subject: "maths",
+            level: 1,
+            titre: "Combien font 8 x 9 ?",
+            points: 2,
+            options: ["72", "76", "68", "81"],
+            correctIndex: 0,
+            explanation: "8 x 9 = 72 !"
+          },
+          {
+            id: "maths_denominateur_def",
+            type: "vf",
+            subject: "maths",
+            level: 1,
+            titre: "Vrai ou Faux : Dans une fraction, le dénominateur est le nombre situé en bas.",
+            points: 2,
+            correctAnswer: "Vrai",
+            explanation: "C'est VRAI ! Le Dénominateur est en bas (D comme Descendre ou Dessous)."
+          }
+        ]
+      }
+    };
+anglais: {
+        id: 'anglais_intro',
+        title: 'Dates, Nombres Ordinaux & Règles de Classe',
+        subject: 'anglais',
+        summaryKids: "En anglais, pour dire la date, on utilise les nombres ordinaux (1st, 2nd, 3rd, 4th). La formule magique est : Today is [Jour], [Mois] the [Nombre ordinal], [Année].",
+        audioFlashScript: "Hello Mathieu! Remember: 1st is first, 2nd is second, 3rd is third, then add TH: 4th, 5th, 6th! Great job!",
+        survivalSheet: {
+          dangerRed: "Attention aux 3 exceptions : 1st (first), 2nd (second), 3rd (third). Après, on met 'th' !",
+          warningYellow: ["1st = first", "2nd = second", "3rd = third", "4th = fourth"],
+          greenFoundation: "Date = Jour + Mois + the [Ordinal] + Année"
+        },
+        practicalMission: {
+          role: "Secret Agent in London",
+          scenario: "You need to book an emergency meeting with the British headquarters.",
+          task: "Say the exact date of tomorrow in English using ordinal numbers."
+        },
+        everydayApplications: [
+          "Lire et comprendre la date sur un jeu vidéo en anglais.",
+          "Comprendre les règles en classe d'anglais sans hésiter."
+        ],
+        mnemonicTrick: "1, 2, 3 sont uniques (ST, ND, RD). Tous les autres finissent en TH !",
+        quizQuestions: [
+          {
+            id: "anglais_date_formula",
+            type: "briques",
+            subject: "anglais",
+            level: 3,
+            titre: "Épreuve • Construis la phrase complète pour donner la date d'aujourd'hui en anglais (3 points)",
+            points: 3,
+            isOfficialExam: true,
+            bricksBank: [
+              "Today is Monday,",
+              "October the 14th,",
+              "twenty twenty-six."
+            ],
+            correctBricks: [
+              "Today is Monday,",
+              "October the 14th,",
+              "twenty twenty-six."
+            ],
+            explanation: "Structure en anglais : Today is [Day], [Month] the [Ordinal], [Year]."
+          },
+          {
+            id: "anglais_ordinal_first",
+            type: "qcm",
+            subject: "anglais",
+            level: 1,
+            titre: "Comment écrit-on '1er' en anglais ?",
+            points: 2,
+            options: ["1st (first)", "1th (firth)", "1nd (fecond)"],
+            correctIndex: 0,
+            explanation: "1st s'écrit first (terminaison en 'st') !"
+          },
+          {
+            id: "anglais_ordinal_third",
+            type: "qcm",
+            subject: "anglais",
+            level: 1,
+            titre: "Comment écrit-on '3ème' en anglais ?",
+            points: 2,
+            options: ["3rd (third)", "3th (thirth)", "3st (thirst)"],
+            correctIndex: 0,
+            explanation: "3rd correspond à third (terminaison en 'rd') !"
+          },
+          {
+            id: "anglais_rule_listen",
+            type: "vf",
+            subject: "anglais",
+            level: 1,
+            titre: "Vrai ou Faux : 'Listen to the teacher' signifie 'Écoute le professeur'.",
+            points: 2,
+            correctAnswer: "Vrai",
+            explanation: "C'est VRAI ! 'Listen' est le verbe écouter."
+          }
         ]
       },
+
+      pc: {
+        id: 'pc_conducteurs',
+        title: 'Physique-Chimie - Conducteurs, Isolants & Recyclage',
+        subject: 'pc',
+        summaryKids: "Un conducteur thermique laisse passer la chaleur (comme les métaux). Un isolant thermique bloque la chaleur (bois, plastique, laine). Pour le recyclage, retiens bien les 3 bacs de tri : 1. Jaune (emballages, métal, plastique), 2. Vert (verre), 3. Marron (compost et restes alimentaires) !",
+        audioFlashScript: "Voici ton flash Physique-Chimie ! Un conducteur thermique laisse circuler la chaleur, un isolant la bloque. Et pour la planète, retiens bien les 3 bacs de tri : bac jaune pour le plastique et métal, bac vert pour le verre, et bac marron pour le compost !",
+        survivalSheet: {
+          dangerRed: "Ne confonds pas thermique (la chaleur) et électrique (l'électricité) ! Et n'oublie aucun des 3 bacs de tri.",
+          warningYellow: ["Conducteur = Métaux", "Isolant = Bois / Plastique", "3 Bacs : Jaune, Vert, Marron"],
+          greenFoundation: "Conducteur = Laisse passer / Isolant = Bloque la chaleur"
+        },
+        practicalMission: {
+          role: "Ingénieur Matériaux & Écologie",
+          scenario: "Tu dois concevoir une casserole avec une poignée sécurisée et trier les chutes d'emballages de l'atelier.",
+          task: "Choisis le bon métal pour le fond, le bon isolant pour la poignée, et classe les déchets dans les 3 bacs."
+        },
+        everydayApplications: [
+          "Savoir pourquoi la queue d'une poêle est en bois ou en plastique pour ne pas se brûler.",
+          "Bien trier les emballages dans les 3 bacs à la maison."
+        ],
+        mnemonicTrick: "Métal = Chauffe vite (conducteur) ! Bois = Reste froid (isolant) !",
+        quizQuestions: [
+          {
+            id: "pc_exam_conducteur_isolant",
+            type: "briques",
+            subject: "pc",
+            level: 3,
+            titre: "Contrôle • Explique la différence entre un conducteur thermique et un isolant thermique (3 points)",
+            points: 3,
+            isOfficialExam: true,
+            bricksBank: [
+              "Un conducteur thermique laisse passer facilement la chaleur comme les métaux,",
+              "alors qu'un isolant thermique bloque la chaleur",
+              "comme le bois, le plastique ou la laine."
+            ],
+            correctBricks: [
+              "Un conducteur thermique laisse passer facilement la chaleur comme les métaux,",
+              "alors qu'un isolant thermique bloque la chaleur",
+              "comme le bois, le plastique ou la laine."
+            ],
+            explanation: "Le conducteur transmet la chaleur, tandis que l'isolant forme une barrière thermique."
+          },
+          {
+            id: "pc_3_bacs_tri",
+            type: "qcm",
+            subject: "pc",
+            level: 2,
+            titre: "Quels sont les 3 bacs de tri indispensables pour recycler correctement ses déchets ?",
+            points: 3,
+            options: [
+              "1. Bac Jaune (emballages/plastique/métal), 2. Bac Vert (verre), 3. Bac Marron (compost/organique)",
+              "1. Bac Bleu (papiers), 2. Bac Rouge (dangereux), 3. Bac Noir (tout le reste)",
+              "Il n'y a que 2 bacs dans toute la France"
+            ],
+            correctIndex: 0,
+            explanation: "Bravo ! Retiens bien les 3 bacs : Jaune (emballages), Vert (verre) et Marron (compost)."
+          },
+          {
+            id: "pc_metal_conducteur",
+            type: "vf",
+            subject: "pc",
+            level: 1,
+            titre: "Vrai ou Faux : Tous les métaux (cuivre, fer, aluminium) sont de bons conducteurs thermiques.",
+            points: 2,
+            correctAnswer: "Vrai",
+            explanation: "C'est VRAI ! Les métaux transmettent très vite l'énergie thermique."
+          }
+        ]
+      },
+
+      geo: {
+        id: 'geo_metropoles',
+        title: '6G1 - Habiter les métropoles & Espaces urbains',
+        subject: 'geo',
+        summaryKids: "Une métropole est une très grande ville qui concentre la population et les activités économiques. Le CBD (Central Business District) rassemble les gratte-ciels de bureaux.",
+        audioFlashScript: "Voici ton flash Géo ! Une métropole est une ville géante comme Paris, Tokyo ou New York. Elle attire les habitants et les sièges d'entreprises.",
+        survivalSheet: {
+          dangerRed: "Ne confonds pas banlieue pavillonnaire et centre-ville historique !",
+          warningYellow: ["Métropole (ville géante)", "CBD (quartier d'affaires)", "Étalement urbain"],
+          greenFoundation: "Métropole = Grande ville qui concentre pouvoirs et habitants"
+        },
+        practicalMission: {
+          role: "Urbaniste de demain",
+          scenario: "Une métropole grandit trop vite et crée des embouteillages géants.",
+          task: "Propose 2 transports en commun écologiques pour relier le quartier d'affaires aux banlieues."
+        },
+        everydayApplications: [
+          "Comprendre le réseau de métros, tramways et bus dans une grande ville.",
+          "Reconnaître les quartiers d'affaires lors d'un voyage."
+        ],
+        mnemonicTrick: "CBD = Centre de Business et Décisions !",
+        quizQuestions: [
+          {
+            id: "geo_cbd_definition",
+            type: "qcm",
+            subject: "geo",
+            level: 2,
+            titre: "Que signifie le sigle CBD dans une grande métropole mondiale ?",
+            points: 2,
+            options: [
+              "Central Business District (le quartier d'affaires avec les gratte-ciels)",
+              "Centre Bancaire Décentralisé",
+              "Carrefour des Bus et Déplacements"
+            ],
+            correctIndex: 0,
+            explanation: "Le CBD rassemble les bureaux, banques et sièges des multinationales."
+          },
+          {
+            id: "geo_metropole_croissance",
+            type: "vf",
+            subject: "geo",
+            level: 1,
+            titre: "Vrai ou Faux : Plus de la moitié des humains vivent aujourd'hui dans des villes.",
+            points: 2,
+            correctAnswer: "Vrai",
+            explanation: "C'est VRAI ! L'urbanisation mondiale dépasse désormais 55 % de la population planétaire."
+          }
+        ]
+      },
+
       francais: {
-        title: "Français • Les Accords du Participe Passé",
-        videoScript: "Avec l'auxiliaire Être, le participe passé s'accorde toujours avec le sujet. Avec Avoir, il s'accorde uniquement si le COD est placé devant le verbe.",
-        flash: "Être = accord avec le sujet. Avoir = accord seulement avec le COD placé devant !",
-        quiz: [
-          { q: "Dans la phrase Les filles sont arrivées, pourquoi met-on ées ?", options: ["Car c'est l'auxiliaire Être (accord avec le sujet féminin pluriel)", "Car c'est l'auxiliaire Avoir"], rep: 0 },
-          { q: "Avec l'auxiliaire Avoir, quand fait-on l'accord ?", options: ["Seulement si le COD est placé avant le verbe", "Toujours", "Jamais"], rep: 0 }
+        id: 'fr_homophones',
+        title: 'Grammaire & Orthographe - Homophones et Classes de Mots',
+        subject: 'francais',
+        summaryKids: "Les homophones ont le même son mais s'écrivent différemment : 'a' (verbe avoir, remplaçable par 'avait') vs 'à' (préposition). 'Et' (conjonction, remplaçable par 'et puis') vs 'est' (verbe être, remplaçable par 'était').",
+        audioFlashScript: "Voici ton flash Français ! Astuce magique : remplace par 'avait' pour savoir si tu écris 'a' sans accent, et remplace par 'était' pour écrire 'est' !",
+        survivalSheet: {
+          dangerRed: "Ne confonds jamais 'a' et 'à'. Fais toujours le test avec 'avait' !",
+          warningYellow: ["a = avait", "est = était", "son = son/sa", "sont = étaient"],
+          greenFoundation: "Le test du temps passé démasque immédiatement le verbe !"
+        },
+        practicalMission: {
+          role: "Rédacteur en chef du journal du collège",
+          scenario: "Un article contient des fautes d'homophones avant l'impression.",
+          task: "Corrige les erreurs de 'a/à' et 'et/est' en appliquant les tests du passé."
+        },
+        everydayApplications: [
+          "Envoyer des messages impeccables sans fautes courantes.",
+          "Gagner des points précieux en dictée et rédaction."
+        ],
+        mnemonicTrick: "Si tu peux dire 'avait', c'est 'a' sans accent !",
+        quizQuestions: [
+          {
+            id: "fr_homophone_a",
+            type: "qcm",
+            subject: "francais",
+            level: 1,
+            titre: "Complète : 'Mathieu ___ réussi son devoir.'",
+            points: 2,
+            options: ["a (car on peut dire 'Mathieu avait réussi')", "à (avec accent)"],
+            correctIndex: 0,
+            explanation: "C'est le verbe avoir : on peut dire 'avait réussi' donc 'a' sans accent !"
+          },
+          {
+            id: "fr_homophone_est",
+            type: "qcm",
+            subject: "francais",
+            level: 1,
+            titre: "Complète : 'Le ciel ___ tout bleu aujourd'hui.'",
+            points: 2,
+            options: ["est (car on peut dire 'était tout bleu')", "et (conjonction)"],
+            correctIndex: 0,
+            explanation: "C'est le verbe être : on peut dire 'le ciel était tout bleu' donc 'est' !"
+          },
+          {
+            id: "fr_classe_mot_verbe",
+            type: "vf",
+            subject: "francais",
+            level: 1,
+            titre: "Vrai ou Faux : Dans la phrase 'Le lion court', le mot 'court' est un verbe d'action.",
+            points: 2,
+            correctAnswer: "Vrai",
+            explanation: "C'est VRAI ! 'Court' est le verbe courir conjugué au présent."
+          }
         ]
       }
     };
 
+    // === COMPOSANT PRINCIPAL REACT : APPLI COMPLETE ===
     function App() {
-      const [activeTab, setActiveTab] = useState("video");
-      const [currentSub, setCurrentSub] = useState("svt");
+      const [currentSubject, setCurrentSubject] = useState('svt');
+      const [activeSection, setActiveSection] = useState('quiz'); // 'quiz', 'cours', 'tables'
       const [isBattleRoyale, setIsBattleRoyale] = useState(false);
-      const [dyslexicMode, setDyslexicMode] = useState(false);
-      const [fontScale, setFontScale] = useState(1);
-      const [isRulerActive, setIsRulerActive] = useState(false);
-      const [rulerY, setRulerY] = useState(200);
-      const [isSommaireOpen, setIsSommaireOpen] = useState(false);
-      const [isPhotoOpen, setIsPhotoOpen] = useState(false);
-      const [photoScanning, setPhotoScanning] = useState(false);
-      const [score, setScore] = useState(0);
-      const [quizIndex, setQuizIndex] = useState(0);
-      const [selectedOption, setSelectedOption] = useState(null);
-      const [answered, setAnswered] = useState(false);
-      const [userText, setUserText] = useState("");
-      const [textFeedback, setTextFeedback] = useState(null);
-      const fileInputRef = useRef(null);
+      const [dysFont, setDysFont] = useState(true);
+      const [fontSize, setFontSize] = useState(18); // px
+      const [rulerActive, setRulerActive] = useState(false);
+      const [rulerY, setRulerY] = useState(150);
+      const [xp, setXp] = useState(420);
+      const [userAnswers, setUserAnswers] = useState({});
+      const [evaluations, setEvaluations] = useState({});
+      const [redactionText, setRedactionText] = useState({});
+      const [mathTable, setMathTable] = useState(7);
 
-      const subData = LESSONS[currentSub];
-      const currentQ = subData.quiz[quizIndex % subData.quiz.length];
-
+      // Suivi souris pour la réglette DYS
       useEffect(() => {
         const handleMouseMove = (e) => {
-          if (isRulerActive) setRulerY(e.clientY);
+          if (rulerActive) setRulerY(e.clientY);
         };
-        window.addEventListener("mousemove", handleMouseMove);
-        return () => window.removeEventListener("mousemove", handleMouseMove);
-      }, [isRulerActive]);
+        window.addEventListener('mousemove', handleMouseMove);
+        return () => window.removeEventListener('mousemove', handleMouseMove);
+      }, [rulerActive]);
 
-      const handleAnswer = (idx) => {
-        if (answered) return;
-        setSelectedOption(idx);
-        setAnswered(true);
-        if (idx === currentQ.rep) {
-          setScore((s) => s + 10);
-          confetti({ particleCount: 70, spread: 60, origin: { y: 0.7 } });
+      const subjectData = COURS_DATA[currentSubject] || COURS_DATA.svt;
+
+      // Gestion de réponse QCM / Vrai-Faux
+      const handleAnswer = (questionId, index, isCorrect, pts) => {
+        if (userAnswers[questionId] !== undefined) return;
+        setUserAnswers(prev => ({ ...prev, [questionId]: index }));
+        if (isCorrect) {
+          playSoundEffect('success');
+          setXp(prev => prev + pts * 10);
         }
       };
 
-      const handleValidateText = () => {
-        if (!userText.trim()) return;
-        const hasCar = /\b(car|parce que|donc|grâce à|pour)\b/i.test(userText);
-        const hasEx = /\b(exemple|chez moi|comme|j'ai|nous)\b/i.test(userText);
-        if (hasCar && hasEx) {
-          setTextFeedback("🌟 20/20 ! Exemple perso + justification complète !");
-          setScore((s) => s + 20);
-          confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-        } else if (hasCar || hasEx) {
-          setTextFeedback("🟢 16/20 ! Bonne argumentation. Pense à ajouter à la fois ton exemple perso et un 'car' !");
-          setScore((s) => s + 10);
-        } else {
-          setTextFeedback("🟡 12/20 ! Pense à faire une phrase avec 'car' ou 'parce que' pour avoir tous les points.");
-        }
-      };
-
-      const handlePhotoSimulate = () => {
-        setPhotoScanning(true);
-        setTimeout(() => {
-          setPhotoScanning(false);
-          setIsPhotoOpen(false);
-          setActiveTab("quiz");
-          confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
-        }, 1200);
+      // Validation de briques
+      const handleValidateBricks = (questionId, correctCount, totalPoints) => {
+        setEvaluations(prev => ({ ...prev, [questionId]: true }));
+        playSoundEffect('victory');
+        setXp(prev => prev + totalPoints * 10);
       };
 
       return (
-        <div style={{ fontSize: `${fontScale}rem` }} className={`min-h-screen flex flex-col transition-colors ${dyslexicMode ? "dys-mode" : ""} ${isBattleRoyale ? "bg-slate-950 text-slate-100" : "bg-[#faf7f2] text-slate-900"}`}>
-          {isRulerActive && (
-            <div style={{ top: `${rulerY - 24}px` }} className="fixed left-0 right-0 h-14 bg-amber-400/25 border-y-2 border-amber-500/80 pointer-events-none z-50 transition-all duration-75"></div>
+        <div 
+          className={`min-h-screen transition-colors duration-300 ${isBattleRoyale ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-800'} ${dysFont ? 'font-dys' : ''}`}
+          style={{ fontSize: `${fontSize}px` }}
+        >
+          {/* Réglette de lecture DYS */}
+          {rulerActive && (
+            <div 
+              className="pointer-events-none fixed left-0 right-0 z-50 h-14 bg-amber-400/20 border-y-2 border-amber-500 shadow-lg backdrop-blur-[1px] transition-all duration-75"
+              style={{ top: `${rulerY - 28}px` }}
+            />
           )}
 
-          <header className={`sticky top-0 z-40 border-b backdrop-blur-md shadow-xs ${isBattleRoyale ? "bg-slate-900/95 border-purple-500/40 text-slate-100" : "bg-white/95 border-amber-200/80 text-slate-800"}`}>
-            <div className="max-w-6xl mx-auto px-4 py-2.5">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <div className={`h-10 w-10 rounded-2xl flex items-center justify-center font-bold text-lg shadow-sm ${isBattleRoyale ? "bg-gradient-to-tr from-purple-600 to-indigo-600 text-white" : "bg-gradient-to-tr from-indigo-600 to-amber-400 text-white"}`}>
-                    {isBattleRoyale ? "⚡" : "🚀"}
+          {/* === EN-TÊTE PRINCIPAL & CONFORT DE LECTURE === */}
+          <header className={`sticky top-0 z-40 border-b backdrop-blur-md transition-colors ${isBattleRoyale ? 'bg-slate-900/90 border-violet-800' : 'bg-white/95 border-slate-200 shadow-xs'}`}>
+            <div className="max-w-6xl mx-auto px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                {/* Logo & Titre */}
+                <div className="flex items-center gap-3">
+                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-2xl shadow-md ${isBattleRoyale ? 'bg-gradient-to-tr from-amber-500 to-violet-600 pulse-glow' : 'bg-gradient-to-tr from-amber-400 to-orange-500'}`}>
+                    {isBattleRoyale ? '⚡' : '🎓'}
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h1 className="text-lg font-black tracking-tight">CapDys Mathieu</h1>
-                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${isBattleRoyale ? "bg-purple-900/80 text-purple-200 border border-purple-500/40" : "bg-emerald-100 text-emerald-800"}`}>
-                        6ème Réussite
-                      </span>
-                    </div>
-                    <p className="text-[11px] opacity-75 hidden sm:block">Entraîneur autonome, leçons & méthodes gagnantes</p>
+                    <h1 className={`text-xl font-black tracking-tight ${isBattleRoyale ? 'text-amber-400 font-gaming' : 'text-slate-900'}`}>
+                      CapDys 6ème • Mathieu
+                    </h1>
+                    <p className="text-xs text-slate-400 font-semibold">Hub de Révision & Préparation aux Évaluations</p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button onClick={() => setIsSommaireOpen(true)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition-all cursor-pointer ${isBattleRoyale ? "bg-purple-950 text-amber-300 border-amber-400/60" : "bg-amber-100 text-amber-950 border-amber-300"}`}>
-                    <span>📚 Sommaire</span>
-                  </button>
-
-                  <button onClick={() => setIsPhotoOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-xs shadow-xs cursor-pointer transition-transform hover:scale-105">
-                    <span>📸 Photo</span>
-                  </button>
-
-                  <div className="flex items-center px-2 py-1 rounded-xl bg-amber-500/20 border border-amber-500/40 text-xs font-black">
-                    <span>⭐ {score} pts</span>
+                {/* Score XP & Badges */}
+                <div className="flex items-center gap-3">
+                  <div className="px-3.5 py-1.5 rounded-full bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-300 font-bold text-sm flex items-center gap-2 border border-amber-300 dark:border-amber-700 shadow-xs">
+                    <span>🏆</span>
+                    <span>{xp} XP</span>
                   </div>
+                  <button 
+                    onClick={() => speakText("Bienvenue Mathieu sur ton hub de révision CapDys !")}
+                    className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-all text-sm"
+                    title="Écouter l'introduction"
+                  >
+                    🔊
+                  </button>
                 </div>
               </div>
 
-              <div className={`mt-2 pt-2 border-t flex flex-wrap items-center justify-between gap-2 text-xs ${isBattleRoyale ? "border-slate-800 text-slate-400" : "border-slate-200 text-slate-500"}`}>
-                <div className="flex items-center gap-1.5 font-bold text-[11px]">
-                  <span>👓 Confort de lecture :</span>
+              {/* Ligne Confort de Lecture & Mode Battle Royale */}
+              <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs font-semibold">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Mode Battle Royale Toggle */}
+                  <button
+                    onClick={() => setIsBattleRoyale(!isBattleRoyale)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-all shadow-xs ${isBattleRoyale ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-violet-500/30' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
+                  >
+                    <span>{isBattleRoyale ? '🔥' : '🎮'}</span>
+                    <span>{isBattleRoyale ? 'Mode Fortnite Actif' : 'Mode Classique'}</span>
+                  </button>
+
+                  {/* Réglette DYS */}
+                  <button 
+                    onClick={() => setRulerActive(!rulerActive)}
+                    className={`px-3 py-1.5 rounded-xl border transition-all ${rulerActive ? 'bg-amber-400 text-amber-950 border-amber-500 font-bold shadow-xs' : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'}`}
+                  >
+                    📏 Réglette : {rulerActive ? 'Oui' : 'Non'}
+                  </button>
+
+                  {/* Police DYS */}
+                  <button 
+                    onClick={() => setDysFont(!dysFont)}
+                    className={`px-3 py-1.5 rounded-xl border transition-all ${dysFont ? 'bg-indigo-600 text-white border-indigo-700 font-bold' : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'}`}
+                  >
+                    📖 Police Lexend DYS
+                  </button>
+
+                  {/* Zoom Texte */}
+                  <div className="flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-0.5">
+                    <span>🔍 Taille :</span>
+                    <button onClick={() => setFontSize(s => Math.max(14, s - 2))} className="px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded font-bold text-sm">-</button>
+                    <span className="w-6 text-center">{fontSize}</span>
+                    <button onClick={() => setFontSize(s => Math.min(26, s + 2))} className="px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded font-bold text-sm">+</button>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button onClick={() => setIsBattleRoyale(!isBattleRoyale)} className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-black border transition-all cursor-pointer ${isBattleRoyale ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-purple-400" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"}`}>
-                    <span>{isBattleRoyale ? "🎮 Mode Fortnite" : "🏫 Mode Classique"}</span>
-                  </button>
-
-                  <button onClick={() => setIsRulerActive(!isRulerActive)} className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold border transition-all cursor-pointer ${isRulerActive ? "bg-amber-400 text-slate-950 border-amber-500 font-black" : "bg-white text-slate-700 border-slate-200"}`}>
-                    <span>Règle {isRulerActive ? "ON" : "OFF"}</span>
-                  </button>
-
-                  <button onClick={() => setDyslexicMode(!dyslexicMode)} className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold border transition-all cursor-pointer ${dyslexicMode ? "bg-amber-500 text-white border-amber-600 font-black" : "bg-white text-slate-700 border-slate-200"}`}>
-                    <span>Police DYS {dyslexicMode ? "ON" : "OFF"}</span>
-                  </button>
-
-                  <div className="flex items-center p-0.5 rounded-xl border bg-white border-slate-200 text-slate-800">
-                    <button onClick={() => setFontScale((s) => Math.max(0.9, Number((s - 0.1).toFixed(1))))} className="px-1.5 py-0.5 font-bold cursor-pointer">-</button>
-                    <span className="px-1 text-[11px] font-bold">{Math.round(fontScale * 100)}%</span>
-                    <button onClick={() => setFontScale((s) => Math.min(1.4, Number((s + 0.1).toFixed(1))))} className="px-1.5 py-0.5 font-bold cursor-pointer">+</button>
-                  </div>
+                <div className="text-slate-400">
+                  Collège 6ème • 7 Matières
                 </div>
               </div>
             </div>
           </header>
 
-          <main className="max-w-5xl mx-auto px-4 py-5 w-full flex-1 space-y-5">
-            <nav className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-              <button onClick={() => setActiveTab("video")} className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer shrink-0 ${activeTab === "video" ? "bg-indigo-600 text-white shadow-xs" : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-200"}`}>
-                🖥️ Tableau
-              </button>
-              <button onClick={() => setActiveTab("survival")} className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer shrink-0 ${activeTab === "survival" ? "bg-amber-500 text-white shadow-xs" : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-200"}`}>
-                ⚡ Flash & Mémo
-              </button>
-              <button onClick={() => setActiveTab("quiz")} className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer shrink-0 ${activeTab === "quiz" ? "bg-emerald-600 text-white shadow-xs" : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-200"}`}>
-                🎯 Mon Quiz
-              </button>
-              <button onClick={() => setActiveTab("parent")} className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer shrink-0 ${activeTab === "parent" ? "bg-purple-600 text-white shadow-xs" : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-200"}`}>
-                🔒 Parent
-              </button>
-            </nav>
-
+          {/* === NAVIGATION DES 7 MATIÈRES === */}
+          <nav className="max-w-6xl mx-auto px-4 mt-6">
             <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-              {SUBJECTS.map((sub) => (
-                <button key={sub.id} onClick={() => { setCurrentSub(sub.id); setQuizIndex(0); setAnswered(false); setSelectedOption(null); setUserText(""); setTextFeedback(null); }} className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-black transition-all cursor-pointer shrink-0 border ${currentSub === sub.id ? "bg-indigo-600 text-white border-indigo-400 shadow-sm" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"}`}>
-                  <span>{sub.icon}</span>
-                  <span>{sub.name}</span>
-                </button>
-              ))}
+              {SUBJECT_TABS.map(tab => {
+                const isSelected = currentSubject === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setCurrentSubject(tab.id);
+                      playSoundEffect('success');
+                    }}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl font-bold whitespace-nowrap transition-all shadow-xs ${
+                      isSelected
+                        ? `bg-gradient-to-r ${tab.color} text-white scale-102 shadow-md`
+                        : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/80 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-300'
+                    }`}
+                  >
+                    <span className="text-lg">{tab.icon}</span>
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
             </div>
+          </nav>
 
-            {activeTab === "video" && (
-              <div className="anim-fade p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b pb-3">
-                  <span className="text-xs font-black uppercase tracking-wider text-indigo-600">🖥️ Tableau de Classe • Cours Interactif</span>
-                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-800">Prêt pour le collège</span>
-                </div>
-                <h2 className="text-xl font-black text-slate-900">{subData.title}</h2>
-                <div className="p-5 rounded-2xl bg-amber-50/80 border border-amber-200 text-slate-800 space-y-3">
-                  <div className="flex items-center gap-2 font-black text-sm text-amber-900">
-                    <span>💡 Ce que le professeur explique :</span>
-                  </div>
-                  <p className="text-sm font-medium leading-relaxed">{subData.videoScript}</p>
-                </div>
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <button onClick={() => setActiveTab("quiz")} className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs cursor-pointer transition-transform hover:scale-105">
-                    🎯 Passer au Quiz de cette leçon →
-                  </button>
-                </div>
-              </div>
-            )}
+          {/* === ONGLETS DE TRAVAIL (QUIZ / FLASH AUDIO / TABLES) === */}
+          <div className="max-w-6xl mx-auto px-4 mt-4">
+            <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+              <button
+                onClick={() => setActiveSection('quiz')}
+                className={`px-4 py-2 rounded-xl font-bold text-sm transition-all ${activeSection === 'quiz' ? 'bg-amber-400 text-amber-950 shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'}`}
+              >
+                📝 Entraînement & Contrôles
+              </button>
+              <button
+                onClick={() => setActiveSection('cours')}
+                className={`px-4 py-2 rounded-xl font-bold text-sm transition-all ${activeSection === 'cours' ? 'bg-amber-400 text-amber-950 shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'}`}
+              >
+                🎙️ Flash Audio & Synthèse
+              </button>
+              {currentSubject === 'maths' && (
+                <button
+                  onClick={() => setActiveSection('tables')}
+                  className={`px-4 py-2 rounded-xl font-bold text-sm transition-all ${activeSection === 'tables' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'}`}
+                >
+                  ✖️ Tables de Multiplication
+                </button>
+              )}
+            </div>
+          </div>
 
-            {activeTab === "survival" && (
-              <div className="anim-fade p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b pb-3">
-                  <span className="text-xs font-black uppercase tracking-wider text-amber-600">⚡ Flash & Fiche de Survie 6ème</span>
-                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-lg bg-amber-100 text-amber-900">Mémo 2 minutes</span>
-                </div>
-                <h2 className="text-xl font-black text-slate-900">{subData.title}</h2>
-                <div className="p-5 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-950 font-bold text-sm leading-relaxed">
-                  {subData.flash}
-                </div>
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <button onClick={() => setActiveTab("quiz")} className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black shadow-xs cursor-pointer">
-                    S'entraîner sur cette notion →
-                  </button>
-                </div>
-              </div>
-            )}
+          {/* === CONTENU PRINCIPAL DE LA MATIERE === */}
+          <main className="max-w-6xl mx-auto px-4 py-6 space-y-6">
 
-            {activeTab === "quiz" && (
-              <div className="anim-fade space-y-5">
-                <div className="p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-4">
-                  <div className="flex items-center justify-between border-b pb-3">
-                    <span className="text-xs font-black uppercase text-emerald-600">🎯 Question {quizIndex + 1} • {subData.title}</span>
-                    <span className="text-xs font-bold text-slate-500">Note : 20/20 visé</span>
-                  </div>
-                  <h3 className="text-base sm:text-lg font-black text-slate-900">{currentQ.q}</h3>
-                  <div className="space-y-2">
-                    {currentQ.options.map((opt, idx) => {
-                      let btnStyle = "bg-slate-50 border-slate-200 text-slate-800 hover:bg-slate-100";
-                      if (answered) {
-                        if (idx === currentQ.rep) btnStyle = "bg-emerald-100 border-emerald-400 text-emerald-950 font-black";
-                        else if (idx === selectedOption) btnStyle = "bg-rose-100 border-rose-300 text-rose-950 font-bold";
-                      }
-                      return (
-                        <button key={idx} disabled={answered} onClick={() => handleAnswer(idx)} className={`w-full p-3.5 rounded-2xl text-left text-xs sm:text-sm font-semibold border-2 transition-all cursor-pointer flex items-center justify-between ${btnStyle}`}>
-                          <span>{opt}</span>
-                          {answered && idx === currentQ.rep && <span>✅</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {answered && (
-                    <div className="flex items-center justify-between pt-2">
-                      <span className="text-xs font-bold text-slate-600">
-                        {selectedOption === currentQ.rep ? "🎉 Bravo, réponse exacte !" : "💡 Regarde la bonne réponse en vert ci-dessus."}
+            {/* VUE 1 : QUIZ & CONTRÔLES OFFICIELS */}
+            {activeSection === 'quiz' && (
+              <div className="space-y-6">
+                {/* Carte de mission / Titre du chapitre */}
+                <div className={`p-6 rounded-3xl border shadow-sm transition-all ${isBattleRoyale ? 'bg-slate-900 border-violet-800' : 'bg-white border-slate-200'}`}>
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                      <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200 text-xs font-black uppercase tracking-wider">
+                        {subjectData.subject.toUpperCase()}
                       </span>
-                      <button onClick={() => { setQuizIndex((i) => (i + 1) % subData.quiz.length); setAnswered(false); setSelectedOption(null); }} className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black shadow-xs cursor-pointer">
-                        Question suivante →
-                      </button>
+                      <h2 className="text-2xl font-black mt-2">{subjectData.title}</h2>
+                      <p className="mt-2 text-slate-600 dark:text-slate-300 leading-relaxed">
+                        {subjectData.summaryKids}
+                      </p>
                     </div>
-                  )}
+                    <button
+                      onClick={() => speakText(subjectData.summaryKids)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-amber-400 hover:bg-amber-500 text-amber-950 font-bold text-sm shadow-xs transition-transform active:scale-95"
+                    >
+                      <span>🔊</span>
+                      <span>Écouter le résumé</span>
+                    </button>
+                  </div>
                 </div>
 
-                <div className="p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-4">
-                  <div className="flex items-center justify-between border-b pb-2">
-                    <span className="text-xs font-black uppercase text-indigo-600">✍️ Entraînement Rédaction & Exemple Perso</span>
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-900">+100% des points</span>
-                  </div>
-                  <p className="text-xs font-bold text-slate-700">Consigne : Dis ton exemple personnel et justifie ta réponse en utilisant « car » ou « parce que ».</p>
-                  <textarea value={userText} onChange={(e) => setUserText(e.target.value)} rows="3" placeholder="Écris ta phrase ici... (Exemple : À la maison, je jette les canettes dans le bac jaune car l'aluminium est un métal recyclable.)" className="w-full p-3.5 rounded-2xl border border-slate-300 text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"></textarea>
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <button onClick={handleValidateText} className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-xs cursor-pointer">
-                      Vérifier mon argumentation
+                {/* Liste des questions interactives */}
+                <div className="space-y-6">
+                  {subjectData.quizQuestions.map((q, qIndex) => {
+                    const isAnswered = userAnswers[q.id] !== undefined;
+                    const selectedIdx = userAnswers[q.id];
+                    const isEvaluated = evaluations[q.id];
+
+                    return (
+                      <div 
+                        key={q.id}
+                        className={`p-6 rounded-3xl border transition-all ${
+                          isBattleRoyale 
+                            ? 'bg-slate-900/90 border-slate-800 hover:border-violet-700' 
+                            : 'bg-white border-slate-200/90 shadow-sm hover:shadow-md'
+                        }`}
+                      >
+                        {/* En-tête de la question */}
+                        <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
+                          <div className="flex items-center gap-2">
+                            <span className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-sm">
+                              {qIndex + 1}
+                            </span>
+                            <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                              {q.isOfficialExam ? '⭐ Évaluation Officielle' : 'Exercice'} • {q.points} pts
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => speakText(q.titre)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                            title="Écouter la question"
+                          >
+                            🔊
+                          </button>
+                        </div>
+
+                        {/* Titre de la question */}
+                        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 leading-snug">
+                          {q.titre}
+                        </h3>
+
+                        {/* Consigne radar si présente */}
+                        {q.consigneRadar && (
+                          <div className="mb-4 p-3.5 rounded-2xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs space-y-1">
+                            <div className="font-bold text-amber-900 dark:text-amber-200">
+                              {q.consigneRadar.trapWarning}
+                            </div>
+                            <div className="text-slate-600 dark:text-slate-300">
+                              💡 <strong>Radar professeur :</strong> {q.consigneRadar.radarQuestion}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* TYPE 1 : QCM */}
+                        {q.type === 'qcm' && q.options && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                            {q.options.map((opt, optIdx) => {
+                              const isCorrect = optIdx === q.correctIndex;
+                              let btnClass = isBattleRoyale 
+                                ? 'bg-slate-800 border-slate-700 hover:border-violet-500' 
+                                : 'bg-slate-50 border-slate-200 hover:bg-amber-50 hover:border-amber-300';
+
+                              if (isAnswered) {
+                                if (optIdx === q.correctIndex) {
+                                  btnClass = 'bg-emerald-500 text-white border-emerald-600 shadow-xs';
+                                } else if (selectedIdx === optIdx) {
+                                  btnClass = 'bg-rose-500 text-white border-rose-600';
+                                } else {
+                                  btnClass = 'opacity-40 bg-slate-100 dark:bg-slate-800 border-transparent';
+                                }
+                              }
+
+                              return (
+                                <button
+                                  key={optIdx}
+                                  disabled={isAnswered}
+                                  onClick={() => handleAnswer(q.id, optIdx, isCorrect, q.points)}
+                                  className={`p-4 rounded-2xl border text-left font-semibold text-sm transition-all flex items-center justify-between gap-3 ${btnClass}`}
+                                >
+                                  <span>{opt}</span>
+                                  {isAnswered && optIdx === q.correctIndex && <span>✅</span>}
+                                  {isAnswered && selectedIdx === optIdx && !isCorrect && <span>❌</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* TYPE 2 : VRAI OU FAUX */}
+                        {q.type === 'vf' && (
+                          <div className="flex gap-4 mt-3">
+                            {['Vrai', 'Faux'].map(choice => {
+                              const isCorrect = choice.toLowerCase() === q.correctAnswer.toLowerCase();
+                              let btnClass = 'flex-1 py-3.5 rounded-2xl font-black text-center border transition-all ';
+
+                              if (isAnswered) {
+                                if (choice.toLowerCase() === q.correctAnswer.toLowerCase()) {
+                                  btnClass += 'bg-emerald-500 text-white border-emerald-600';
+                                } else if (userAnswers[q.id] === choice) {
+                                  btnClass += 'bg-rose-500 text-white border-rose-600';
+                                } else {
+                                  btnClass += 'opacity-40 bg-slate-100 border-transparent';
+                                }
+                              } else {
+                                btnClass += isBattleRoyale 
+                                  ? 'bg-slate-800 hover:bg-slate-700 border-slate-700' 
+                                  : 'bg-slate-100 hover:bg-amber-100 border-slate-200';
+                              }
+
+                              return (
+                                <button
+                                  key={choice}
+                                  disabled={isAnswered}
+                                  onClick={() => handleAnswer(q.id, choice, isCorrect, q.points)}
+                                  className={btnClass}
+                                >
+                                  {choice}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* TYPE 3 : BRIQUES OU REDACTION LIBRE */}
+                        {(q.type === 'briques' || q.type === 'libre') && (
+                          <div className="mt-3 space-y-3">
+                            {q.bricksBank && (
+                              <div className="p-4 rounded-2xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2">
+                                <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                                  🧩 Briques de réponse du cours :
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {q.bricksBank.map((b, bIdx) => (
+                                    <span key={bIdx} className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-medium shadow-2xs">
+                                      {b}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Zone de rédaction */}
+                            <textarea
+                              rows={3}
+                              placeholder="Rédige ta réponse complète avec tes propres mots..."
+                              value={redactionText[q.id] || ''}
+                              onChange={(e) => setRedactionText(prev => ({ ...prev, [q.id]: e.target.value }))}
+                              className="w-full p-4 rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            />
+
+                            <div className="flex items-center justify-between gap-3 flex-wrap">
+                              <button
+                                onClick={() => handleValidateBricks(q.id, 3, q.points)}
+                                className="px-5 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm shadow-xs transition-transform active:scale-95"
+                              >
+                                ✅ Valider ma rédaction (+{q.points * 10} XP)
+                              </button>
+                              {q.hint && (
+                                <button
+                                  onClick={() => speakText(q.hint)}
+                                  className="text-xs font-bold text-amber-600 hover:underline"
+                                >
+                                  💡 Indice audio
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* EXPLICATION / CORRECTION APRES REPONSE */}
+                        {(isAnswered || isEvaluated) && q.explanation && (
+                          <div className="mt-4 p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-sm text-emerald-900 dark:text-emerald-200 space-y-1">
+                            <div className="font-bold flex items-center gap-1.5">
+                              <span>💡</span>
+                              <span>Ce qu'il faut retenir pour le devoir :</span>
+                            </div>
+                            <p>{q.explanation}</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* VUE 2 : FLASH AUDIO & REPERES */}
+            {activeSection === 'cours' && (
+              <div className="space-y-6">
+                <div className={`p-6 rounded-3xl border shadow-sm ${isBattleRoyale ? 'bg-slate-900 border-violet-800' : 'bg-white border-slate-200'}`}>
+                  <h3 className="text-xl font-black mb-3">🎙️ Script Flash Audio de 2 Minutes</h3>
+                  <p className="p-4 rounded-2xl bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
+                    "{subjectData.audioFlashScript}"
+                  </p>
+                  <div className="mt-4 flex gap-3">
+                    <button
+                      onClick={() => speakText(subjectData.audioFlashScript)}
+                      className="px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-amber-950 font-black shadow-md flex items-center gap-2 active:scale-95 transition-transform"
+                    >
+                      <span>▶️</span>
+                      <span>Lancer la lecture audio</span>
                     </button>
-                    {textFeedback && <span className="text-xs font-black text-slate-800">{textFeedback}</span>}
+                    <button
+                      onClick={() => window.speechSynthesis.cancel()}
+                      className="px-4 py-3 rounded-2xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold"
+                    >
+                      ⏹️ Arrêter
+                    </button>
+                  </div>
+                </div>
+
+                {/* Fiche de survie & Mnémonique */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-5 rounded-3xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900">
+                    <h4 className="font-bold text-rose-900 dark:text-rose-200 mb-2">⚠️ Danger / Piège du contrôle :</h4>
+                    <p className="text-sm text-rose-800 dark:text-rose-300">{subjectData.survivalSheet.dangerRed}</p>
+                  </div>
+                  <div className="p-5 rounded-3xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900">
+                    <h4 className="font-bold text-emerald-900 dark:text-emerald-200 mb-2">🧠 Astuce Mnémonique :</h4>
+                    <p className="text-sm text-emerald-800 dark:text-emerald-300">{subjectData.mnemonicTrick}</p>
                   </div>
                 </div>
               </div>
             )}
 
-            {activeTab === "parent" && (
-              <div className="anim-fade p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-5">
-                <div className="flex items-center justify-between border-b pb-3">
-                  <span className="text-xs font-black uppercase text-purple-600">🔒 Espace Parent & Bac à Sable</span>
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-purple-100 text-purple-900">Supervision</span>
+            {/* VUE 3 : TABLES DE MULTIPLICATION (MATHS) */}
+            {activeSection === 'tables' && currentSubject === 'maths' && (
+              <div className={`p-6 rounded-3xl border shadow-sm ${isBattleRoyale ? 'bg-slate-900 border-violet-800' : 'bg-white border-slate-200'}`}>
+                <h3 className="text-xl font-black mb-4">✖️ Entraîneur de Tables de Multiplication</h3>
+                
+                {/* Sélecteur de table */}
+                <div className="flex gap-2 flex-wrap mb-6">
+                  {[2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+                    <button
+                      key={num}
+                      onClick={() => setMathTable(num)}
+                      className={`w-12 h-12 rounded-2xl font-black text-lg transition-all ${mathTable === num ? 'bg-blue-600 text-white shadow-md scale-105' : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200'}`}
+                    >
+                      {num}
+                    </button>
+                  ))}
                 </div>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Cet espace vous permet de vérifier le barème du collège 6ème (argumentation avec connecteurs, exemples personnels) et de simuler des scores sans modifier la progression réelle de Mathieu.
-                </p>
-                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-xs text-amber-950 space-y-2">
-                  <div className="font-black text-sm">🎯 Clé de réussite pour Mathieu en 6ème :</div>
-                  <p>Ne pas laisser un mot isolé. Toujours reprendre les mots de la question et justifier avec « car » ou « parce que » pour obtenir 16 à 20/20.</p>
+
+                {/* Grille de la table active */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(multiplier => {
+                    const result = mathTable * multiplier;
+                    return (
+                      <div 
+                        key={multiplier}
+                        onClick={() => speakText(`${mathTable} fois ${multiplier}, égale ${result}`)}
+                        className="p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-center cursor-pointer hover:bg-blue-100 transition-all"
+                      >
+                        <div className="text-xs text-blue-600 font-bold">{mathTable} × {multiplier} =</div>
+                        <div className="text-2xl font-black text-blue-950 dark:text-blue-100 mt-1">{result}</div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
           </main>
-
-          {isSommaireOpen && (
-            <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 anim-fade">
-              <div className="bg-white rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl">
-                <div className="flex items-center justify-between border-b pb-3">
-                  <h3 className="text-base font-black text-slate-900">📚 Sommaire Complet des 7 Matières</h3>
-                  <button onClick={() => setIsSommaireOpen(false)} className="text-slate-400 hover:text-slate-700 font-bold text-sm cursor-pointer">✕</button>
-                </div>
-                <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                  {SUBJECTS.map((sub) => (
-                    <button key={sub.id} onClick={() => { setCurrentSub(sub.id); setIsSommaireOpen(false); setActiveTab("video"); }} className="w-full p-3 rounded-2xl border border-slate-200 hover:border-indigo-400 text-left flex items-center justify-between transition-all cursor-pointer">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xl">{sub.icon}</span>
-                        <div>
-                          <span className="font-extrabold text-xs block text-slate-900">{sub.name}</span>
-                          <span className="text-[11px] text-slate-500">{LESSONS[sub.id].title}</span>
-                        </div>
-                      </div>
-                      <span className="text-xs text-indigo-600 font-black">Accéder →</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {isPhotoOpen && (
-            <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 anim-fade">
-              <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl text-center">
-                <div className="flex items-center justify-between border-b pb-2">
-                  <h3 className="text-base font-black text-slate-900 flex items-center gap-1.5">
-                    <span>📸</span>
-                    <span>Prendre en photo un cours ou devoir</span>
-                  </h3>
-                  <button onClick={() => setIsPhotoOpen(false)} className="text-slate-400 hover:text-slate-700 font-bold text-sm cursor-pointer">✕</button>
-                </div>
-                <p className="text-xs text-slate-600">Prends en photo la page de ton cahier ou ton devoir surveillé pour générer un entraînement sur-mesure !</p>
-                <div className="p-8 border-2 border-dashed border-indigo-200 rounded-2xl bg-indigo-50/50 space-y-3">
-                  <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoSimulate} className="hidden" />
-                  {photoScanning ? (
-                    <div className="py-4 space-y-2">
-                      <div className="text-3xl animate-spin">⏳</div>
-                      <p className="text-xs font-bold text-indigo-900">Analyse de la leçon en cours...</p>
-                    </div>
-                  ) : (
-                    <div>
-                      <button onClick={() => fileInputRef.current?.click()} className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-xs shadow-md cursor-pointer hover:bg-indigo-700">
-                        Ouvrir la caméra ou importer une photo
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       );
     }
 
-    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    // === RENDU DANS LE DOCUMENT HTML ===
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
   </script>
 </body>
 </html>
+    
